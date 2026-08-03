@@ -9,6 +9,12 @@ is interested in that channel. All datagrams are authenticated with an
 HMAC computed from a static, shared session password (see udp_protocol.py)
 so the password itself is never sent on the wire.
 
+Built on asyncio's DatagramProtocol: a single non-blocking event loop calls
+`datagram_received` for each inbound packet instead of blocking on
+`socket.recvfrom` in a dedicated thread. Everything (packet handling, the
+stale-client purge) runs on that one loop, so the client registry needs no
+lock (compare with the previous threaded version, which required one).
+
 Configuration is entirely via environment variables so this can be deployed
 as-is in the accompanying Dockerfile:
     TERASIM_UDP_SERVER_HOST  - bind address (default 0.0.0.0)
@@ -16,9 +22,9 @@ as-is in the accompanying Dockerfile:
     TERASIM_UDP_PASSWORD     - required static session password
 """
 
+import asyncio
 import os
-import socket
-import threading
+import signal
 import time
 import logging
 
@@ -29,7 +35,6 @@ from terasim_cosim.udp_protocol import (
     MSG_TYPE_PUBLISH,
     MSG_TYPE_PING,
     MSG_TYPE_PONG,
-    MAX_UDP_PAYLOAD_BYTES,
 )
 
 logging.basicConfig(
@@ -41,39 +46,33 @@ CLIENT_TIMEOUT_SECONDS = 30
 PURGE_INTERVAL_SECONDS = 10
 
 
-class UDPRelayServer:
+class UDPRelayServer(asyncio.DatagramProtocol):
     """Authenticated UDP relay/broker for TeraSim co-simulation channels."""
 
-    def __init__(self, host: str, port: int, password: str):
+    def __init__(self, password: str):
         if not password:
             raise ValueError(
                 "A static session password must be provided via the "
                 "TERASIM_UDP_PASSWORD environment variable."
             )
-        self.host = host
-        self.port = port
         self.password = password
-
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.socket.bind((self.host, self.port))
-
+        self.transport: "asyncio.DatagramTransport | None" = None
         # addr -> {"channels": set[str], "last_seen": float}
         self.clients = {}
-        self.clients_lock = threading.Lock()
-        self._stop_event = threading.Event()
+        self._purge_task: "asyncio.Task | None" = None
 
-    def serve_forever(self) -> None:
-        logger.info(f"TeraSim UDP relay server listening on {self.host}:{self.port}")
-        purge_thread = threading.Thread(target=self._purge_loop, daemon=True)
-        purge_thread.start()
-        while not self._stop_event.is_set():
-            try:
-                raw, addr = self.socket.recvfrom(MAX_UDP_PAYLOAD_BYTES)
-            except OSError:
-                break
-            self._handle_datagram(raw, addr)
+    def connection_made(self, transport: asyncio.DatagramTransport) -> None:
+        self.transport = transport
+        self._purge_task = asyncio.ensure_future(self._purge_loop())
 
-    def _handle_datagram(self, raw: bytes, addr) -> None:
+    def connection_lost(self, exc) -> None:
+        if self._purge_task is not None:
+            self._purge_task.cancel()
+
+    def error_received(self, exc: Exception) -> None:
+        logger.warning(f"UDP transport error: {exc}")
+
+    def datagram_received(self, raw: bytes, addr) -> None:
         body = decode_message(self.password, raw)
         if body is None:
             logger.warning(f"Rejected unauthenticated/malformed datagram from {addr}")
@@ -82,14 +81,12 @@ class UDPRelayServer:
         msg_type = body.get("type")
         if msg_type == MSG_TYPE_REGISTER:
             channels = set(body.get("channels", []))
-            with self.clients_lock:
-                self.clients[addr] = {"channels": channels, "last_seen": time.time()}
+            self.clients[addr] = {"channels": channels, "last_seen": time.time()}
             logger.info(f"Registered client {addr} for channels {sorted(channels)}")
         elif msg_type == MSG_TYPE_PING:
-            with self.clients_lock:
-                if addr in self.clients:
-                    self.clients[addr]["last_seen"] = time.time()
-            self.socket.sendto(encode_message(self.password, MSG_TYPE_PONG), addr)
+            if addr in self.clients:
+                self.clients[addr]["last_seen"] = time.time()
+            self.transport.sendto(encode_message(self.password, MSG_TYPE_PONG), addr)
         elif msg_type == MSG_TYPE_PUBLISH:
             self._relay_publish(body, addr)
         else:
@@ -101,32 +98,45 @@ class UDPRelayServer:
         if channel is None or data is None:
             return
         packet = encode_message(self.password, MSG_TYPE_PUBLISH, channel=channel, data=data)
-        with self.clients_lock:
-            targets = [
+        for addr, info in self.clients.items():
+            if addr != sender_addr and channel in info["channels"]:
+                self.transport.sendto(packet, addr)
+
+    async def _purge_loop(self) -> None:
+        while True:
+            await asyncio.sleep(PURGE_INTERVAL_SECONDS)
+            now = time.time()
+            stale = [
                 addr
                 for addr, info in self.clients.items()
-                if addr != sender_addr and channel in info["channels"]
+                if now - info["last_seen"] > CLIENT_TIMEOUT_SECONDS
             ]
-        for addr in targets:
-            self.socket.sendto(packet, addr)
+            for addr in stale:
+                del self.clients[addr]
+                logger.info(f"Removed stale client {addr}")
 
-    def _purge_loop(self) -> None:
-        while not self._stop_event.is_set():
-            now = time.time()
-            with self.clients_lock:
-                stale = [
-                    addr
-                    for addr, info in self.clients.items()
-                    if now - info["last_seen"] > CLIENT_TIMEOUT_SECONDS
-                ]
-                for addr in stale:
-                    del self.clients[addr]
-                    logger.info(f"Removed stale client {addr}")
-            self._stop_event.wait(PURGE_INTERVAL_SECONDS)
 
-    def stop(self) -> None:
-        self._stop_event.set()
-        self.socket.close()
+async def run_server(host: str, port: int, password: str) -> None:
+    loop = asyncio.get_running_loop()
+    protocol = UDPRelayServer(password)
+    transport, _ = await loop.create_datagram_endpoint(
+        lambda: protocol, local_addr=(host, port)
+    )
+    logger.info(f"TeraSim UDP relay server listening on {host}:{port}")
+
+    stop_event = asyncio.Event()
+    try:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, stop_event.set)
+    except NotImplementedError:
+        # add_signal_handler is unavailable on Windows' default event loop;
+        # Ctrl+C still raises KeyboardInterrupt, caught in main() below.
+        pass
+
+    try:
+        await stop_event.wait()
+    finally:
+        transport.close()
 
 
 def main() -> None:
@@ -134,13 +144,10 @@ def main() -> None:
     port = int(os.environ.get("TERASIM_UDP_SERVER_PORT", "8443"))
     password = os.environ.get("TERASIM_UDP_PASSWORD")
 
-    server = UDPRelayServer(host=host, port=port, password=password)
     try:
-        server.serve_forever()
+        asyncio.run(run_server(host, port, password))
     except KeyboardInterrupt:
         pass
-    finally:
-        server.stop()
 
 
 if __name__ == "__main__":

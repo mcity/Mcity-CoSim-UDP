@@ -73,7 +73,9 @@ Mcity-CoSim-UDP/
    doubles as a NAT keep-alive).
 4. The relay server relays every `publish` datagram it receives to every
    other registered client whose subscriptions include that channel. It
-   never touches Redis — it only forwards authenticated bytes.
+   never touches Redis — it only forwards authenticated bytes. It's built on
+   `asyncio.DatagramProtocol`: one non-blocking event loop handles every
+   client, rather than a blocking socket call in a dedicated thread.
 5. On the receiving client, incoming `publish` datagrams are authenticated,
    and if the channel is one this client subscribed to, the payload is
    written into local Redis under that same key — exactly where
@@ -183,12 +185,14 @@ workload and worth getting right before sizing a task definition.
 
 These are reasoned estimates based on the code, **not measured benchmarks**:
 the server does one JSON parse plus one HMAC-SHA256 verify per datagram
-(sub-millisecond each) in a single-threaded `recvfrom` loop, so it's bound by
+(sub-millisecond each) on a single asyncio event loop, so it's bound by
 packets-per-second rather than raw compute, and its memory footprint (an
 in-memory dict of connected clients) is negligible next to the ~50-80 MB
 Python runtime baseline. Load-test with your real channel count and publish
 rate before committing to a size; if CloudWatch `CPUUtilization` for the task
-sits near 100%, or you observe delivery gaps under load, move up a tier.
+sits near 100%, or you observe delivery gaps under load, move up a tier —
+a single asyncio event loop still runs on one core, so more vCPU only helps
+up to that ceiling (see the next note for what to do beyond it).
 
 **Do not horizontally scale this service.** `UDPRelayServer` keeps its
 client registry (`self.clients`) in the process's own memory. Running more

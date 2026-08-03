@@ -1,0 +1,12 @@
+services:
+  terasim-udp-relay:
+    build:
+      context: ..
+      dockerfile: udp_relay_server/Dockerfile
+    ports:
+      - "${TERASIM_UDP_SERVER_PORT:-8443}:${TERASIM_UDP_SERVER_PORT:-8443}/udp"
+    environment:
+      TERASIM_UDP_SERVER_HOST: "0.0.0.0"
+      TERASIM_UDP_SERVER_PORT: "${TERASIM_UDP_SERVER_PORT:-8443}"
+      TERASIM_UDP_PASSWORD: "${TERASIM_UDP_PASSWORD:?TERASIM_UDP_PASSWORD must be set}"
+    restart: unless-stopped

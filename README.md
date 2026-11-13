@@ -82,9 +82,27 @@ relay server; clients can ignore them.
 
 Load it into your shell before running the client:
 
+Linux / macOS (bash, zsh):
+
 ```bash
 set -a && source .env && set +a
 ```
+
+Windows (PowerShell):
+
+```powershell
+Get-Content .env | ForEach-Object { if ($_ -match '^\s*([^#=]+?)\s*=\s*(.*)$') { Set-Item "env:$($matches[1])" $matches[2] } }
+```
+
+Windows (Command Prompt):
+
+```bat
+for /f "usebackq eol=# tokens=1,* delims==" %a in (".env") do set "%a=%b"
+```
+
+These set the variables for the current terminal session only, so run them
+again in each new terminal. In a `.bat` file, write `%%a` / `%%b` instead of
+`%a` / `%b`.
 
 If you are connecting to an existing relay server, skip to
 [step 3](#3-run-the-bridge-client-at-each-site).
@@ -111,9 +129,27 @@ TERASIM_UDP_SERVER_PORT=8443
 Load it into your shell before starting the server (Docker Compose or plain
 Python):
 
+Linux / macOS (bash, zsh):
+
 ```bash
 set -a && source .env && set +a
 ```
+
+Windows (PowerShell):
+
+```powershell
+Get-Content .env | ForEach-Object { if ($_ -match '^\s*([^#=]+?)\s*=\s*(.*)$') { Set-Item "env:$($matches[1])" $matches[2] } }
+```
+
+Windows (Command Prompt):
+
+```bat
+for /f "usebackq eol=# tokens=1,* delims==" %a in (".env") do set "%a=%b"
+```
+
+These set the variables for the current terminal session only, so run them
+again in each new terminal. In a `.bat` file, write `%%a` / `%%b` instead of
+`%a` / `%b`.
 
 ### Start the server
 

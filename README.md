@@ -31,9 +31,10 @@ Mcity-CoSim-UDP/
 │   ├── Dockerfile
 │   └── docker-compose.yml
 ├── examples/
-│   ├── run_udp_bridge.py          # start a bridge client for this site
-│   ├── seed_test_message.py       # write a test value into local Redis
-│   └── watch_local_redis_key.py   # watch a local Redis key for changes
+│   └── udp_examples/
+│       ├── run_udp_bridge.py          # start a bridge client for this site
+│       ├── seed_test_message.py       # repeatedly write a test value into local Redis
+│       └── watch_local_redis_key.py   # watch a local Redis key for changes
 ├── requirements.txt
 ├── setup.py
 └── .env.example
@@ -133,33 +134,36 @@ environment variables, you can pass `server_host` / `server_port` /
 at a non-default local Redis (`{"host": ..., "port": ..., "db": ...,
 "password": ...}`).
 
-The ready-to-run version of this is `examples/run_udp_bridge.py` — edit its
-`PUB_CHANNELS` / `SUB_CHANNELS` lists for your site and run:
+The ready-to-run version of this is `examples/udp_examples/run_udp_bridge.py`
+— edit its `PUB_CHANNELS` / `SUB_CHANNELS` lists for your site and run:
 
 ```bash
-python examples/run_udp_bridge.py
+python examples/udp_examples/run_udp_bridge.py
 ```
 
 ## 4. Try it end-to-end
 
 Validate the whole path — local Redis → relay server → remote local Redis —
-using the helper scripts in `examples/`.
+using the helper scripts in `examples/udp_examples/`.
 
 On **Site A** (publishing):
 ```bash
-python examples/run_udp_bridge.py                 # PUB_CHANNELS=[VEHICLE_STATE]
-python examples/seed_test_message.py terasim/vehicle_state "hello from A"
+python examples/udp_examples/run_udp_bridge.py                 # PUB_CHANNELS=[VEHICLE_STATE]
+python examples/udp_examples/seed_test_message.py 20 terasim/vehicle_state "hello from A"
 ```
+
+`seed_test_message.py [freq_hz] [channel] [message]` writes to `channel`
+repeatedly at `freq_hz` (10-100 Hz) until you press Ctrl+C.
 
 On **Site B** (receiving, with `PUB_CHANNELS`/`SUB_CHANNELS` swapped in
 `run_udp_bridge.py`):
 ```bash
-python examples/run_udp_bridge.py                 # SUB_CHANNELS=[VEHICLE_STATE]
-python examples/watch_local_redis_key.py terasim/vehicle_state
+python examples/udp_examples/run_udp_bridge.py                 # SUB_CHANNELS=[VEHICLE_STATE]
+python examples/udp_examples/watch_local_redis_key.py terasim/vehicle_state
 ```
 
-Site B's `watch_local_redis_key.py` should print the value written by
-`seed_test_message.py` on Site A within a second or two.
+Site B's `watch_local_redis_key.py` should print the values written by
+`seed_test_message.py` on Site A, updating live as they arrive.
 
 ## Environment variable reference
 

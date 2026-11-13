@@ -58,35 +58,64 @@ python -m venv venv && source venv/bin/activate
 pip install -e .
 ```
 
-Copy `.env.example` to `.env` and fill it in:
+### Client environment setup
+
+Most users only run the bridge client and connect to an existing relay
+server. Get the relay's host, port and password from whoever runs it, then
+copy `.env.example` to `.env` and set these three values:
 
 ```bash
 cp .env.example .env
 ```
 
 ```dotenv
-# Shared secret - MUST be identical on the relay server and every client.
-TERASIM_UDP_PASSWORD=choose-a-strong-shared-password
-
-# Client-side: where to reach the relay server
+# Where to reach the relay server
 TERASIM_UDP_HOST=relay.example.com
 TERASIM_UDP_PORT=8443
 
-# Server-side: what the relay server binds to (used by Docker/compose)
-TERASIM_UDP_SERVER_HOST=0.0.0.0
-TERASIM_UDP_SERVER_PORT=8443
+# Shared secret - must match the relay server's password exactly
+TERASIM_UDP_PASSWORD=choose-a-strong-shared-password
 ```
 
-Load it into your shell before running anything:
+The `TERASIM_UDP_SERVER_*` lines in `.env.example` are only for hosting a
+relay server; clients can ignore them.
+
+Load it into your shell before running the client:
 
 ```bash
 set -a && source .env && set +a
 ```
 
-## 2. Run the relay server
+If you are connecting to an existing relay server, skip to
+[step 3](#3-run-the-bridge-client-at-each-site).
 
-The relay server needs no Redis and no third-party packages — only the
-standard library.
+## 2. Run the relay server (relay host only)
+
+Only one machine needs to do this: the publicly reachable host that both
+sites connect to. The relay server needs no Redis and no third-party
+packages, only the standard library.
+
+### Server environment setup
+
+On the relay host, set these in `.env`:
+
+```dotenv
+# Shared secret - every client must use this same value
+TERASIM_UDP_PASSWORD=choose-a-strong-shared-password
+
+# What the relay server binds to
+TERASIM_UDP_SERVER_HOST=0.0.0.0
+TERASIM_UDP_SERVER_PORT=8443
+```
+
+Load it into your shell before starting the server (Docker Compose or plain
+Python):
+
+```bash
+set -a && source .env && set +a
+```
+
+### Start the server
 
 **Docker Compose (recommended):**
 
@@ -167,13 +196,21 @@ Site B's `watch_local_redis_key.py` should print the values written by
 
 ## Environment variable reference
 
-| Variable | Used by | Meaning |
-|---|---|---|
-| `TERASIM_UDP_PASSWORD` | client + server | Shared static session password. Must match on both ends. Required, no default. |
-| `TERASIM_UDP_HOST` | client | Relay server host/IP to connect to. |
-| `TERASIM_UDP_PORT` | client | Relay server port to connect to. |
-| `TERASIM_UDP_SERVER_HOST` | server | Address the relay server binds to. Default `0.0.0.0`. |
-| `TERASIM_UDP_SERVER_PORT` | server | Port the relay server binds to. Default `8443`. |
+### Client (bridge)
+
+| Variable | Meaning |
+|---|---|
+| `TERASIM_UDP_HOST` | Relay server host/IP to connect to. Required. |
+| `TERASIM_UDP_PORT` | Relay server port to connect to. Required. |
+| `TERASIM_UDP_PASSWORD` | Shared session password. Must match the relay server's. Required, no default. |
+
+### Server (relay host only)
+
+| Variable | Meaning |
+|---|---|
+| `TERASIM_UDP_PASSWORD` | Shared session password that every client must use. Required, no default. |
+| `TERASIM_UDP_SERVER_HOST` | Address the relay server binds to. Default `0.0.0.0`. |
+| `TERASIM_UDP_SERVER_PORT` | Port the relay server binds to. Default `8443`. |
 
 ## Troubleshooting
 

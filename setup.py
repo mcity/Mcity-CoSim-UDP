@@ -27,7 +27,7 @@ setup(
     install_requires=[
         "redis==5.0.2",
         "loguru==0.7.2",
-        "carla==0.9.16",
+        "carla==0.9.15",
         "pygame",
         local_wheel("terasim", "terasim-2024.9.25.1332-py3-none-any.whl"),
         local_wheel("terasim_cosim", "terasim_cosim-2025.6.11-py3-none-any.whl"),

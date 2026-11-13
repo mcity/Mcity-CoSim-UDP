@@ -28,7 +28,7 @@ import signal
 import time
 import logging
 
-from terasim_cosim.udp_protocol import (
+from terasim_cosim_udp.udp_protocol import (
     encode_message,
     decode_message,
     MSG_TYPE_REGISTER,

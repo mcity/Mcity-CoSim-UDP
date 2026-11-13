@@ -6,9 +6,9 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Only the dependency-free protocol module is needed, not the full
-# terasim_cosim package (which pulls in redis/loguru for the client side).
-COPY terasim_cosim/__init__.py ./terasim_cosim/__init__.py
-COPY terasim_cosim/udp_protocol.py ./terasim_cosim/udp_protocol.py
+# terasim_cosim_udp package (which pulls in redis/loguru for the client side).
+COPY terasim_cosim_udp/__init__.py ./terasim_cosim_udp/__init__.py
+COPY terasim_cosim_udp/udp_protocol.py ./terasim_cosim_udp/udp_protocol.py
 COPY udp_relay_server/server.py ./udp_relay_server/server.py
 
 ENV PYTHONPATH=/app

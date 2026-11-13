@@ -14,8 +14,8 @@ and receive. A typical two-site setup:
 
 import time
 
-from terasim_cosim.constants import VEHICLE_STATE, VEHICLE_CONTROL
-from terasim_cosim.udp_client_wrapper import create_udp_client
+from terasim_cosim_udp.constants import VEHICLE_STATE, VEHICLE_CONTROL
+from terasim_cosim_udp.udp_client_wrapper import create_udp_client
 
 PUB_CHANNELS = [VEHICLE_STATE]
 SUB_CHANNELS = [VEHICLE_CONTROL]

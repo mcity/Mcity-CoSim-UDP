@@ -21,7 +21,7 @@ opposite.
 
 ```
 Mcity-CoSim-UDP/
-├── terasim_cosim/
+├── terasim_cosim_udp/
 │   ├── constants.py               # env var names + shared Redis channel keys
 │   ├── udp_protocol.py            # signed wire protocol
 │   └── udp_client_wrapper/
@@ -57,6 +57,15 @@ cd Mcity-CoSim-UDP
 python -m venv venv && source venv/bin/activate
 pip install -e .
 ```
+
+`pip install -e .` installs the UDP bridge plus everything the examples need:
+`redis`, `loguru`, `carla`, `pygame`, and the TeraSim wheels in `dist/`
+(`terasim`, `terasim_cosim`, `terasim_nde_nade`, which bring in numpy, scipy,
+SUMO and the rest). On Windows, activate with `venv\Scripts\activate`.
+
+The UDP bridge lives in the `terasim_cosim_udp` package. The `terasim_cosim`
+package is the Redis client from the TeraSim wheel, used by the CARLA examples.
+The two are separate packages and can be installed in the same environment.
 
 ### Client environment setup
 
@@ -175,8 +184,8 @@ Use `create_udp_client()`, picking which local Redis keys this site
 publishes out and which it subscribes to receive:
 
 ```python
-from terasim_cosim.udp_client_wrapper import create_udp_client
-from terasim_cosim.constants import VEHICLE_STATE, VEHICLE_CONTROL
+from terasim_cosim_udp.udp_client_wrapper import create_udp_client
+from terasim_cosim_udp.constants import VEHICLE_STATE, VEHICLE_CONTROL
 
 # Site A: publish local vehicle state, receive remote vehicle control
 udp_client = create_udp_client(
